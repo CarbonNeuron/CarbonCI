@@ -5,7 +5,6 @@ namespace CarbonCI
 {
     public static class Settings
     {
-        public static GitHubClient GitClient;
         //Global persistent settings that are saved to a json file. Limited Types
         public static IPersistentSettings PSettings = new ConfigurationBuilder<IPersistentSettings>().UseJsonFile("settings.json").Build();
     }
@@ -15,7 +14,10 @@ namespace CarbonCI
     {
         //Types allowed: bool, double, int, long, string, TimeSpan, DateTime, Uri, Guid
         //DateTime is always converted to UTC
-        [Option(Alias = "GithubAuthToken", DefaultValue = "")]
+        [Option(Alias = "Tokens.GithubAuth", DefaultValue = "")]
         string GithubAuthToken { get; }
+        
+        [Option(Alias = "Tokens.DiscordToken", DefaultValue = "")]
+        string DiscordToken { get; }
     }
 }
