@@ -7,6 +7,9 @@ using System.Security.Cryptography;
 using System.Threading.Tasks;
 using DSharpPlus;
 using DSharpPlus.CommandsNext;
+using DSharpPlus.EventArgs;
+using LiteDB;
+using Newtonsoft.Json;
 using NLog;
 using NLog.Fluent;
 using Octokit;
@@ -21,7 +24,7 @@ namespace CarbonCI
         static DiscordClient discord;
         static CommandsNextModule commands;
         static GitHubClient gitHub = new GitHubClient(new ProductHeaderValue("CarbonCI"));
-
+        public static LiteDatabase db = new LiteDatabase(@"MyData.db");
         private static readonly Logger _logger = LogManager.GetCurrentClassLogger();
 
         public static void Main(string[] args)
@@ -35,10 +38,39 @@ namespace CarbonCI
             await setupDiscord();
             await setupGithub();
             //var latest = await getLatestVersion();
+            discord.GuildMemberUpdated += DiscordOnGuildMemberUpdated;
             //var tt = await runBuildScript(latest.incrementPatch());
             _logger.Info($"idle");
             await Task.Delay(-1); //Never returns.
         }
+
+        private static async Task DiscordOnGuildMemberUpdated(GuildMemberUpdateEventArgs e)
+        {
+            try
+            {
+                var col = db.GetCollection<LockedDiscordUser>("LockedDiscordUsers");
+                if (col.Exists(q => q.UserId == e.Member.Id))
+                {
+                    try
+                    {
+                        var thing = col.FindOne(q => q.guildID == e.Guild.Id && q.UserId == e.Member.Id);
+                        if (thing.nickToLockTo != e.NicknameAfter)
+                        {
+                            await e.Member.ModifyAsync(nickname: thing.nickToLockTo);
+                        }
+                    }
+                    catch (Exception b)
+                    {
+                        _logger.Error(b);
+                    }
+                }
+            }
+            catch (Exception j)
+            {
+                _logger.Error(j);
+            }
+        }
+
 
         public static async Task<bool> runBuildScript(SemVersion BuildVersion)
         {
@@ -151,5 +183,14 @@ namespace CarbonCI
 
             await discord.ConnectAsync();
         }
+    }
+
+    public class LockedDiscordUser
+    {
+        public ObjectId Id { get; set; }
+        public ulong UserId { get; set; }
+        public string nickToLockTo { get; set; }
+        
+        public ulong guildID { get; set; }
     }
 }

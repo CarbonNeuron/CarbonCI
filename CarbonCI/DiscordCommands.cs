@@ -8,12 +8,121 @@ using DSharpPlus;
 using DSharpPlus.CommandsNext;
 using DSharpPlus.CommandsNext.Attributes;
 using DSharpPlus.Entities;
+using LiteDB;
 using Semver;
 
 namespace CarbonCI
 {
     public class DiscordCommands
     {
+        [Group("locks", CanInvokeWithoutSubcommand = true)] // let's mark this class as a command group
+        [Description("Meme commands")] // give it a description for help purposes
+        [Hidden] // let's hide this from the eyes of curious users
+        [RequireRolesAttribute("Admin+Dev")] // and restrict this to users who have appropriate permissions
+        public class LockGroup
+        {
+            public async Task ExecuteGroupAsync(CommandContext ctx, [Description("Who's locks to lookup")]DiscordMember member)
+            {
+                await ctx.TriggerTypingAsync();
+                var embed = new DiscordEmbedBuilder();
+                embed.WithFooter("Powered by CarbonCI®",
+                    "https://cdn.discordapp.com/avatars/759076557750140930/26713c78e70e69f063bda9e918b855bb.png?size=128").WithTimestamp(DateTimeOffset.UtcNow)
+                    .WithTitle($"Username locks for **{member.DisplayName}**");
+                var col = Program.db.GetCollection<LockedDiscordUser>("LockedDiscordUsers");
+                
+                if(col.Exists(x => x.guildID == ctx.Guild.Id && x.UserId == member.Id))
+                {
+                    var thing = col.FindOne(x => x.guildID == ctx.Guild.Id && x.UserId == member.Id);
+                    embed.AddField("**Locked to**:", $"{thing.nickToLockTo}");
+                    embed.Color = DiscordColor.SpringGreen;
+                }
+                else
+                {
+                    embed.Description = "No locks for the specified user!";
+                    embed.Color = DiscordColor.Red;
+                }
+                await ctx.RespondAsync(null, false, embed.Build());
+
+            }
+
+            [Command("clear"), Description("clears a users locks")]
+            public async Task UnlockAdd(CommandContext ctx, [Description("Whose nickname should I unlock")] DiscordMember member)
+            {
+                await ctx.TriggerTypingAsync();
+                var embed = new DiscordEmbedBuilder();
+                embed.WithFooter("Powered by CarbonCI®",
+                    "https://cdn.discordapp.com/avatars/759076557750140930/26713c78e70e69f063bda9e918b855bb.png?size=128").WithTimestamp(DateTimeOffset.UtcNow);
+                var col = Program.db.GetCollection<LockedDiscordUser>("LockedDiscordUsers");
+                try
+                {
+                    var doc = col.FindOne(b => b.UserId == member.Id && b.guildID == ctx.Guild.Id);
+                    if (doc is null)
+                    {
+                        embed.WithTitle($"**Error**");
+                        embed.Color = DiscordColor.Red;
+                        embed.WithDescription("Doc is null");
+                    }
+                    else
+                    {
+                        col.Delete(doc.Id);
+                        embed.WithTitle($"**Unlocked {member.Username}!**");
+                        embed.Color = DiscordColor.SpringGreen;
+                        embed.WithDescription("Successfully unlocked.");
+                    }
+                    await member.ModifyAsync("");
+                }
+                catch (Exception b)
+                {
+                    embed.WithTitle($"**Error**");
+                    embed.Color = DiscordColor.Red;
+                    embed.WithDescription(b.Message);
+                }
+
+                await ctx.RespondAsync(null, false, embed.Build());
+            }
+
+            [Command("add"), Description("adds a user to the locks list")]
+            public async Task LockAdd(CommandContext ctx, [Description("Whose nickname should I lock?")] DiscordMember member, [RemainingText, Description("Nickname to set them too.")] string nickname)
+            {
+                await ctx.TriggerTypingAsync();
+                var embed = new DiscordEmbedBuilder();
+                embed.WithFooter("Powered by CarbonCI®",
+                        "https://cdn.discordapp.com/avatars/759076557750140930/26713c78e70e69f063bda9e918b855bb.png?size=128").WithTimestamp(DateTimeOffset.UtcNow);
+                try
+                {
+                    
+                    var col = Program.db.GetCollection<LockedDiscordUser>("LockedDiscordUsers");
+                    
+                    var h = new LockedDiscordUser {UserId = member.Id, guildID = ctx.Guild.Id, nickToLockTo = nickname};
+                    embed.WithColor(DiscordColor.SpringGreen);
+                    if (col.Exists(x => x.UserId == member.Id && x.guildID == ctx.Guild.Id))
+                    {
+                        var a = col.FindOne(x => x.UserId == member.Id && x.guildID == ctx.Guild.Id);
+                        a.nickToLockTo = nickname;
+                        col.Update(a);
+                        embed.WithTitle("**Modified lock**");
+                    }
+                    else
+                    {
+                        col.Insert(h);
+                        embed.WithTitle("**Locked user nickname**");
+                    }
+
+                    embed.AddField("**Locked user:**", member.Username, true);
+                    embed.AddField("**Locked to name:**", nickname, true);
+                    await member.ModifyAsync(nickname);
+                }
+                catch (Exception e)
+                {
+                    embed.WithTitle("**Error!**");
+                    embed.WithColor(DiscordColor.Red);
+                    embed.Description = e.Message;
+                }
+
+                await ctx.RespondAsync(null, false, embed.Build());
+
+            }
+        }
         [Group("build")] // let's mark this class as a command group
         [Description("automated build and deployment commands.")] // give it a description for help purposes
         [Hidden] // let's hide this from the eyes of curious users

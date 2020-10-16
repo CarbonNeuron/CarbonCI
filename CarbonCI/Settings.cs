@@ -23,5 +23,8 @@ namespace CarbonCI
         
         [Option(Alias = "DiscordToken", DefaultValue = "")]
         string DiscordToken { get; }
+        
+        [Option(Alias = "NickNameLock", DefaultValue = "{}")]
+        string NicknameLocks { get; set; }
     }
 }
