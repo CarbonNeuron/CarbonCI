@@ -24,7 +24,21 @@ namespace CarbonCI
         [Option(Alias = "DiscordToken", DefaultValue = "")]
         string DiscordToken { get; }
         
-        [Option(Alias = "NickNameLock", DefaultValue = "{}")]
-        string NicknameLocks { get; set; }
+        
+        [Option(Alias = "Polly.Voice", DefaultValue = "justin")]
+        string PollyVoice { get; set; }
+
+
+        [Option(Alias = "Polly.AccessKey", DefaultValue = "")]
+        string PollyAccessKey { get; set; }
+        
+        [Option(Alias = "Polly.SecretKey", DefaultValue = "")]
+        string PollySecretKey { get; set; }
+        
+        [Option(Alias = "LavaLink", DefaultValue = "")]
+        string lavalinkConnectionString { get; }
+        
+        [Option(Alias = "LavalinkPassword", DefaultValue = "")]
+        string lavalinkPassword { get; }
     }
 }

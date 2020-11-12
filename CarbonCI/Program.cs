@@ -5,16 +5,22 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
+using Amazon;
+using Amazon.Polly;
+using Amazon.Runtime;
 using DSharpPlus;
 using DSharpPlus.CommandsNext;
 using DSharpPlus.EventArgs;
+using Lavalink4NET;
+using Lavalink4NET.DSharpPlus;
+using Lavalink4NET.Tracking;
 using LiteDB;
 using Newtonsoft.Json;
 using NLog;
 using NLog.Fluent;
 using Octokit;
 using Semver;
-using LogLevel = DSharpPlus.LogLevel;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CarbonCI
 {
@@ -22,9 +28,11 @@ namespace CarbonCI
     {
         static string Owner = "denverquane";
         static DiscordClient discord;
-        static CommandsNextModule commands;
+        static CommandsNextExtension commands;
         static GitHubClient gitHub = new GitHubClient(new ProductHeaderValue("CarbonCI"));
+        public static AmazonPollyClient Polly = new AmazonPollyClient(new BasicAWSCredentials(Settings.PSettings.PollyAccessKey, Settings.PSettings.PollySecretKey), RegionEndpoint.USEast1);
         public static LiteDatabase db = new LiteDatabase(@"MyData.db");
+        public static LavalinkNode audioService;
         private static readonly Logger _logger = LogManager.GetCurrentClassLogger();
 
         public static void Main(string[] args)
@@ -39,9 +47,33 @@ namespace CarbonCI
             await setupGithub();
             //var latest = await getLatestVersion();
             discord.GuildMemberUpdated += DiscordOnGuildMemberUpdated;
+            discord.Ready += DiscordOnReady;
             //var tt = await runBuildScript(latest.incrementPatch());
             _logger.Info($"idle");
+            var clientWrapper = new DiscordClientWrapper(discord);
+            audioService = new LavalinkNode(new LavalinkNodeOptions
+            {
+                RestUri = $"http://{Settings.PSettings.lavalinkConnectionString}/",
+                WebSocketUri = $"ws://{Settings.PSettings.lavalinkConnectionString}/",
+                Password = $"{Settings.PSettings.lavalinkPassword}"
+            }, clientWrapper);
+            
+            var service = new InactivityTrackingService(
+                audioService, // The instance of the IAudioService (e.g. LavalinkNode)
+                clientWrapper, // The discord client wrapper instance
+                new InactivityTrackingOptions
+                {
+                    DisconnectDelay = TimeSpan.Zero,
+                    TrackInactivity = false
+                });
+            service.RemoveTracker(DefaultInactivityTrackers.ChannelInactivityTracker);
+            service.BeginTracking();
             await Task.Delay(-1); //Never returns.
+        }
+
+        private static async Task DiscordOnReady(ReadyEventArgs readyEventArgs)
+        {
+            await audioService.InitializeAsync();
         }
 
         private static async Task DiscordOnGuildMemberUpdated(GuildMemberUpdateEventArgs e)
@@ -56,7 +88,7 @@ namespace CarbonCI
                         var thing = col.FindOne(q => q.guildID == e.Guild.Id && q.UserId == e.Member.Id);
                         if (thing.nickToLockTo != e.NicknameAfter)
                         {
-                            await e.Member.ModifyAsync(nickname: thing.nickToLockTo);
+                            await e.Member.ModifyAsync( x=>x.Nickname=thing.nickToLockTo);
                         }
                     }
                     catch (Exception b)
@@ -171,14 +203,17 @@ namespace CarbonCI
             {
                 Token = Settings.PSettings.DiscordToken,
                 TokenType = TokenType.Bot,
-                UseInternalLogHandler = true,
-                LogLevel = LogLevel.Debug
+                ReconnectIndefinitely = true,
+                LogLevel = DSharpPlus.LogLevel.Debug,
+                AutoReconnect = true
             });
 
             commands = discord.UseCommandsNext(new CommandsNextConfiguration
             {
-                StringPrefix = ".."
+                StringPrefixes = new List<string>{".."},
+                CaseSensitive = false
             });
+            
             commands.RegisterCommands<DiscordCommands>();
 
             await discord.ConnectAsync();
